@@ -71,6 +71,9 @@ ldns_lookup_table ldns_algorithms[] = {
 #ifdef USE_ED448
 	{ LDNS_ED448, "ED448"},
 #endif
+#ifdef USE_GOST
+	{ LDNS_ECC_GOST12, "ECC-GOST12"},
+#endif
         { LDNS_INDIRECT, "INDIRECT" },
         { LDNS_PRIVATEDNS, "PRIVATEDNS" },
         { LDNS_PRIVATEOID, "PRIVATEOID" },
@@ -2018,14 +2021,14 @@ ldns_hmac_key2buffer_str(ldns_buffer *output, const ldns_key *k)
 
 #if defined(HAVE_SSL) && defined(USE_GOST)
 static ldns_status
-ldns_gost_key2buffer_str(ldns_buffer *output, EVP_PKEY *p)
+ldns_gost_key2buffer_str_generic(ldns_buffer *output, EVP_PKEY *p, const char* keyword)
 {
 	unsigned char* pp = NULL;
 	int ret;
 	ldns_rdf *b64_bignum;
 	ldns_status status;
 
-	ldns_buffer_printf(output, "GostAsn1: ");
+	ldns_buffer_printf(output, keyword);
 
 	ret = i2d_PrivateKey(p, &pp);
 	b64_bignum = ldns_rdf_new_frm_data(LDNS_RDF_TYPE_B64, (size_t)ret, pp);
@@ -2035,6 +2038,18 @@ ldns_gost_key2buffer_str(ldns_buffer *output, EVP_PKEY *p)
 	OPENSSL_free(pp);
 	ldns_buffer_printf(output, "\n");
 	return status;
+}
+
+static ldns_status
+ldns_gost_key2buffer_str(ldns_buffer *output, EVP_PKEY *p)
+{
+	return ldns_gost_key2buffer_str_generic(output, p, "GostAsn1: ");
+}
+
+static ldns_status
+ldns_gost12_key2buffer_str(ldns_buffer *output, EVP_PKEY *p)
+{
+	return ldns_gost_key2buffer_str_generic(output, p, "Gost12Asn1: ");
 }
 #endif
 
@@ -2343,6 +2358,22 @@ ldns_key2buffer_str(ldns_buffer *output, const ldns_key *k)
 					k->_key.key);
 				break;
 #endif /* USE_ED448 */
+			case LDNS_SIGN_ECC_GOST12:
+				/* no format defined, use blob */
+#if defined(HAVE_SSL) && defined(USE_GOST)
+				ldns_buffer_printf(output, "Private-key-format: v1.2\n");
+				ldns_buffer_printf(output, "Algorithm: %d (ECC-GOST12)\n", LDNS_SIGN_ECC_GOST12);
+				status = ldns_gost12_key2buffer_str(output, 
+#ifndef S_SPLINT_S
+					k->_key.key
+#else
+					NULL
+#endif
+				);
+#else
+				goto error;
+#endif /* GOST */
+				break;
 			case LDNS_SIGN_HMACMD5:
 				/* there's not much of a format defined for TSIG */
 				/* It's just a binary blob, Same for all algorithms */

@@ -577,6 +577,25 @@ ldns_key_rr2ds(const ldns_rr *key, ldns_hash h)
 		ldns_rr_free(ds);
 		return NULL;
 #endif
+	case LDNS_HASH_GOST12:
+#ifdef USE_GOST
+		(void)ldns_key_EVP_load_gost12_id();
+		md = EVP_get_digestbyname("md_gost2012_256");
+		if(!md) {
+			ldns_rr_free(ds);
+			return NULL;
+		}
+		digest = LDNS_XMALLOC(uint8_t, EVP_MD_size(md));
+		if (!digest) {
+			ldns_rr_free(ds);
+			return NULL;
+		}
+                break;
+#else
+		/* not implemented */
+		ldns_rr_free(ds);
+		return NULL;
+#endif
 	}
 
 	data_buf = ldns_buffer_new(LDNS_MAX_PACKETLEN);
@@ -653,6 +672,7 @@ ldns_key_rr2ds(const ldns_rr *key, ldns_hash h)
 		ldns_rr_push_rdf(ds, tmp);
 		break;
 	case LDNS_HASH_GOST:
+	case LDNS_HASH_GOST12:
 #ifdef USE_GOST
 		if(!ldns_digest_evp((unsigned char *) ldns_buffer_begin(data_buf),
 				(unsigned int) ldns_buffer_position(data_buf),

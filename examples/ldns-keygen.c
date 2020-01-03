@@ -169,6 +169,14 @@ main(int argc, char *argv[])
 	case LDNS_SIGN_ECDSAP384SHA384:
 		break;
 #endif
+#ifdef USE_GOST
+	case LDNS_SIGN_ECC_GOST12:
+		if(!ldns_key_EVP_load_gost12_id()) {
+			fprintf(stderr, "error: libcrypto does not provide GOST 2012\n");
+			exit(EXIT_FAILURE);
+		}
+		break;
+#endif
 	case LDNS_SIGN_HMACMD5:
 		if (!had_bits) {
 			bits = 512;
@@ -294,6 +302,13 @@ main(int argc, char *argv[])
 	case LDNS_SIGN_ECC_GOST:
 #ifdef USE_GOST
 		ds = ldns_key_rr2ds(pubkey, LDNS_HASH_GOST);
+#else
+		ds = ldns_key_rr2ds(pubkey, LDNS_SHA256);
+#endif
+		break;
+	case LDNS_SIGN_ECC_GOST12:
+#ifdef USE_GOST
+		ds = ldns_key_rr2ds(pubkey, LDNS_HASH_GOST12);
 #else
 		ds = ldns_key_rr2ds(pubkey, LDNS_SHA256);
 #endif

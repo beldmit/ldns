@@ -48,6 +48,9 @@ ldns_lookup_table ldns_signing_algorithms[] = {
 #ifdef USE_ED448
 	{ LDNS_SIGN_ED448, "ED448" },
 #endif
+#ifdef USE_GOST
+        { LDNS_SIGN_ECC_GOST12, "ECC-GOST" },
+#endif
 #ifdef USE_DSA
         { LDNS_SIGN_DSA, "DSA" },
         { LDNS_SIGN_DSA_NSEC3, "DSA-NSEC3-SHA1" },
@@ -133,19 +136,18 @@ ldns_key_new_frm_engine(ldns_key **key, ENGINE *e, char *key_id, ldns_algorithm 
 
 #ifdef USE_GOST
 /** store GOST engine reference loaded into OpenSSL library */
+/** We assume that the engine providing gost2001 provides the gost2012 either */
 ENGINE* ldns_gost_engine = NULL;
 
-int
-ldns_key_EVP_load_gost_id(void)
+static int
+ldns_key_EVP_load_gost_id_generic(const char *algname)
 {
-	static int gost_id = 0;
+	int gost_id = 0; 
 	const EVP_PKEY_ASN1_METHOD* meth;
 	ENGINE* e;
 
-	if(gost_id) return gost_id;
-
 	/* see if configuration loaded gost implementation from other engine*/
-	meth = EVP_PKEY_asn1_find_str(NULL, "gost2001", -1);
+	meth = EVP_PKEY_asn1_find_str(NULL, algname, -1);
 	if(meth) {
 		EVP_PKEY_asn1_get0_info(&gost_id, NULL, NULL, NULL, NULL, meth);
 		return gost_id;
@@ -169,7 +171,7 @@ ldns_key_EVP_load_gost_id(void)
 		return 0;
 	}
 
-	meth = EVP_PKEY_asn1_find_str(&e, "gost2001", -1);
+	meth = EVP_PKEY_asn1_find_str(&e, algname, -1);
 	if(!meth) {
 		/* algo not found */
 		ENGINE_finish(e);
@@ -184,6 +186,24 @@ ldns_key_EVP_load_gost_id(void)
 	return gost_id;
 } 
 
+int
+ldns_key_EVP_load_gost_id(void)
+{
+	static int gost_id = 0; 
+	if(gost_id) return gost_id;
+
+	return ldns_key_EVP_load_gost_id_generic("gost2001");
+}
+
+int
+ldns_key_EVP_load_gost12_id(void)
+{
+	static int gost_id = 0; 
+	if(gost_id) return gost_id;
+
+	return ldns_key_EVP_load_gost_id_generic("gost2012_256");
+}
+
 void ldns_key_EVP_unload_gost(void)
 {
         if(ldns_gost_engine) {
@@ -195,19 +215,14 @@ void ldns_key_EVP_unload_gost(void)
 
 /** read GOST private key */
 static EVP_PKEY*
-ldns_key_new_frm_fp_gost_l(FILE* fp, int* line_nr)
+ldns_key_new_frm_fp_gost_l_generic(FILE* fp, int* line_nr, int gost_id, const char *keyword)
 {
 	char token[16384];
 	const unsigned char* pp;
-	int gost_id;
 	EVP_PKEY* pkey;
 	ldns_rdf* b64rdf = NULL;
 
-	gost_id = ldns_key_EVP_load_gost_id();
-	if(!gost_id)
-		return NULL;
-
-	if (ldns_fget_keyword_data_l(fp, "GostAsn1", ": ", token, "\n", 
+	if (ldns_fget_keyword_data_l(fp, keyword, ": ", token, "\n", 
 		sizeof(token), line_nr) == -1)
 		return NULL;
 	while(strlen(token) < 96) {
@@ -222,6 +237,28 @@ ldns_key_new_frm_fp_gost_l(FILE* fp, int* line_nr)
 	pkey = d2i_PrivateKey(gost_id, NULL, &pp, (int)ldns_rdf_size(b64rdf));
 	ldns_rdf_deep_free(b64rdf);
 	return pkey;
+}
+
+static EVP_PKEY*
+ldns_key_new_frm_fp_gost_l(FILE* fp, int* line_nr)
+{
+	int gost_id;
+	gost_id = ldns_key_EVP_load_gost_id();
+	if(!gost_id)
+		return NULL;
+
+	return ldns_key_new_frm_fp_gost_l_generic(fp, line_nr, gost_id, "GostAsn1");
+}
+
+static EVP_PKEY*
+ldns_key_new_frm_fp_gost12_l(FILE* fp, int* line_nr)
+{
+	int gost_id;
+	gost_id = ldns_key_EVP_load_gost12_id();
+	if(!gost_id)
+		return NULL;
+
+	return ldns_key_new_frm_fp_gost_l_generic(fp, line_nr, gost_id, "Gost12Asn1");
 }
 #endif
 
@@ -575,6 +612,16 @@ ldns_key_new_frm_fp_l(ldns_key **key, FILE *fp, int *line_nr)
 # endif
 #endif
         }
+	if (strncmp(d, "23 ECC-GOST12", 3) == 0) {
+#ifdef USE_GOST
+		alg = LDNS_SIGN_ECC_GOST12;
+#else
+# ifdef STDERR_MSGS
+		fprintf(stderr, "Warning: ECC-GOST12 not compiled into this ");
+		fprintf(stderr, "version of ldns, use --enable-gost\n");
+# endif
+#endif
+	}
 	if (strncmp(d, "157 HMAC-MD5", 4) == 0) {
 		alg = LDNS_SIGN_HMACMD5;
 	}
@@ -709,6 +756,23 @@ ldns_key_new_frm_fp_l(ldns_key **key, FILE *fp, int *line_nr)
 #endif /* splint */
 			break;
 #endif
+		case LDNS_SIGN_ECC_GOST12:
+			ldns_key_set_algorithm(k, alg);
+#if defined(HAVE_SSL) && defined(USE_GOST)
+                        if(!ldns_key_EVP_load_gost12_id()) {
+				ldns_key_free(k);
+                                return LDNS_STATUS_CRYPTO_ALGO_NOT_IMPL;
+                        }
+			ldns_key_set_evp_key(k, 
+				ldns_key_new_frm_fp_gost12_l(fp, line_nr));
+#ifndef S_SPLINT_S
+			if(!k->_key.key) {
+				ldns_key_free(k);
+				return LDNS_STATUS_ERR;
+			}
+#endif /* splint */
+#endif
+			break;
 		default:
 			ldns_key_free(k);
 			return LDNS_STATUS_SYNTAX_ALG_ERR;
@@ -1044,19 +1108,16 @@ ldns_key_new_frm_fp_hmac_l( FILE *f
 
 #ifdef USE_GOST
 static EVP_PKEY*
-ldns_gen_gost_key(void)
+ldns_gen_gost_key_generic(int gost_id, const char* paramset)
 {
 	EVP_PKEY_CTX* ctx;
 	EVP_PKEY* p = NULL;
-	int gost_id = ldns_key_EVP_load_gost_id();
-	if(!gost_id)
-		return NULL;
 	ctx = EVP_PKEY_CTX_new_id(gost_id, NULL);
 	if(!ctx) {
 		/* the id should be available now */
 		return NULL;
 	}
-	if(EVP_PKEY_CTX_ctrl_str(ctx, "paramset", "A") <= 0) {
+	if(EVP_PKEY_CTX_ctrl_str(ctx, "paramset", paramset) <= 0) {
 		/* cannot set paramset */
 		EVP_PKEY_CTX_free(ctx);
 		return NULL;
@@ -1073,6 +1134,26 @@ ldns_gen_gost_key(void)
 	}
 	EVP_PKEY_CTX_free(ctx);
 	return p;
+}
+
+static EVP_PKEY*
+ldns_gen_gost_key(void)
+{
+	int gost_id = ldns_key_EVP_load_gost_id();
+	if(!gost_id)
+		return NULL;
+	
+	return ldns_gen_gost_key_generic(gost_id, "A");
+}
+
+static EVP_PKEY*
+ldns_gen_gost12_key(void)
+{
+	int gost_id = ldns_key_EVP_load_gost12_id();
+	if(!gost_id)
+		return NULL;
+	
+	return ldns_gen_gost_key_generic(gost_id, "TCA");
 }
 #endif
 
@@ -1311,6 +1392,20 @@ ldns_key_new_frm_algorithm(ldns_signing_algorithm alg, uint16_t size)
 #endif
 			break;
 #endif /* ED448 */
+		case LDNS_SIGN_ECC_GOST12:
+#if defined(HAVE_SSL) && defined(USE_GOST)
+			ldns_key_set_evp_key(k, ldns_gen_gost12_key());
+#ifndef S_SPLINT_S
+                        if(!k->_key.key) {
+                                ldns_key_free(k);
+                                return NULL;
+                        }
+#endif /* splint */
+#else
+			ldns_key_free(k);
+			return NULL;
+#endif /* HAVE_SSL and USE_GOST */
+                        break;
 	}
 	ldns_key_set_algorithm(k, alg);
 	return k;
@@ -1736,21 +1831,33 @@ ldns_key_dsa2bin(unsigned char *data, DSA *k, uint16_t *size)
 
 #ifdef USE_GOST
 static bool
-ldns_key_gost2bin(unsigned char* data, EVP_PKEY* k, uint16_t* size)
+ldns_key_gost2bin_generic(unsigned char* data, EVP_PKEY* k, uint16_t* size, int offset)
 {
 	int i;
 	unsigned char* pp = NULL;
-	if(i2d_PUBKEY(k, &pp) != 37 + 64) {
-		/* expect 37 byte(ASN header) and 64 byte(X and Y) */
+	if(i2d_PUBKEY(k, &pp) != offset + 64) {
+		/* expect offset byte(ASN header) and 64 byte(X and Y) */
 		free(pp);
 		return false;
 	}
 	/* omit ASN header */
 	for(i=0; i<64; i++)
-		data[i] = pp[i+37];
+		data[i] = pp[i+offset];
 	free(pp);
 	*size = 64;
 	return true;
+}
+
+static bool
+ldns_key_gost2bin(unsigned char* data, EVP_PKEY* k, uint16_t* size)
+{
+	return ldns_key_gost2bin_generic(data, k, size, 37);
+}
+
+static bool
+ldns_key_gost122bin(unsigned char* data, EVP_PKEY* k, uint16_t* size)
+{
+	return ldns_key_gost2bin_generic(data, k, size, 42);
 }
 #endif /* USE_GOST */
 
@@ -2013,6 +2120,28 @@ ldns_key2rr(const ldns_key *k)
 			internal_data = 1;
 			break;
 #endif
+		case LDNS_SIGN_ECC_GOST12:
+			ldns_rr_push_rdf(pubkey, ldns_native2rdf_int8(
+				LDNS_RDF_TYPE_ALG, ldns_key_algorithm(k)));
+#if defined(HAVE_SSL) && defined(USE_GOST)
+			bin = LDNS_XMALLOC(unsigned char, LDNS_MAX_KEYLEN);
+			if (!bin) {
+                                ldns_rr_free(pubkey);
+				return NULL;
+                        }
+#ifndef S_SPLINT_S
+			if (!ldns_key_gost122bin(bin, k->_key.key, &size)) {
+		                LDNS_FREE(bin);
+                                ldns_rr_free(pubkey);
+				return NULL;
+			}
+#endif /* splint */
+			internal_data = 1;
+#else
+                        ldns_rr_free(pubkey);
+			return NULL;
+#endif /* HAVE_SSL and USE_GOST */
+			break;
 		case LDNS_SIGN_HMACMD5:
 		case LDNS_SIGN_HMACSHA1:
 		case LDNS_SIGN_HMACSHA224:
@@ -2173,6 +2302,7 @@ ldns_signing_algorithm ldns_get_signing_algorithm_by_name(const char* name)
                 {LDNS_SIGN_RSASHA1_NSEC3, "RSASHA1_NSEC3" },
 #ifdef USE_GOST
                 {LDNS_SIGN_ECC_GOST, "GOST"},
+                {LDNS_SIGN_ECC_GOST12, "GOST12"},
 #endif
                 /* compat with possible output */
                 {LDNS_DH, "DH"},

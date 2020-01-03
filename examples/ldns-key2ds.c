@@ -27,6 +27,7 @@ usage(FILE *fp, char *prog) {
 	fprintf(fp, "  -2: use SHA256 for the DS hash\n");
 #ifdef USE_GOST
 	fprintf(fp, "  -g: use GOST for the DS hash\n");
+	fprintf(fp, "  -G: use GOST2012 for the DS hash\n");
 #endif
 #ifdef USE_ECDSA
 	fprintf(fp, "  -4: use SHA384 for the DS hash\n");
@@ -54,6 +55,12 @@ suitable_hash(ldns_signing_algorithm algorithm)
 	case LDNS_SIGN_ECC_GOST:
 #ifdef USE_GOST
 		return LDNS_HASH_GOST;
+#else
+		return LDNS_SHA256;
+#endif
+	case LDNS_SIGN_ECC_GOST12:
+#ifdef USE_GOST
+		return LDNS_HASH_GOST12;
 #else
 		return LDNS_SHA256;
 #endif
@@ -112,6 +119,14 @@ main(int argc, char *argv[])
 				exit(EXIT_FAILURE);
 			}
 			h = LDNS_HASH_GOST;
+			similar_hash = 0;
+		}
+		if (strcmp(argv[0], "-G") == 0) {
+			if(!ldns_key_EVP_load_gost12_id()) {
+				fprintf(stderr, "error: libcrypto does not provide GOST12\n");
+				exit(EXIT_FAILURE);
+			}
+			h = LDNS_HASH_GOST12;
 			similar_hash = 0;
 		}
 #endif

@@ -65,6 +65,7 @@ enum ldns_enum_algorithm
 #ifdef USE_ED448
 	LDNS_ED448		= 16,  /* draft-ietf-curdle-dnskey-ed448 */
 #endif
+        LDNS_ECC_GOST12         = 23,  /* RFC 5933-bis */
         LDNS_INDIRECT           = 252,
         LDNS_PRIVATEDNS         = 253,
         LDNS_PRIVATEOID         = 254
@@ -79,7 +80,8 @@ enum ldns_enum_hash
         LDNS_SHA1               = 1,  /* RFC 4034 */
         LDNS_SHA256             = 2,  /* RFC 4509 */
         LDNS_HASH_GOST          = 3,  /* RFC 5933 */
-        LDNS_SHA384             = 4   /* RFC 6605 */
+        LDNS_SHA384             = 4,  /* RFC 6605 */
+				LDNS_HASH_GOST12        = 5,  /* RFC 5933-bis */
 };
 typedef enum ldns_enum_hash ldns_hash;
 
@@ -104,6 +106,7 @@ enum ldns_enum_signing_algorithm
 #ifdef USE_ED448
 	LDNS_SIGN_ED448		 = LDNS_ED448,
 #endif
+	LDNS_SIGN_ECC_GOST12 = LDNS_ECC_GOST12, /* not official! RFC 5933-bis */
 	LDNS_SIGN_HMACMD5	 = 157,	/* not official! This type is for TSIG, not DNSSEC */
 	LDNS_SIGN_HMACSHA1	 = 158,	/* not official! This type is for TSIG, not DNSSEC */
 	LDNS_SIGN_HMACSHA256 = 159,  /* ditto */
@@ -354,6 +357,7 @@ void ldns_key_assign_dsa_key(ldns_key *k, DSA *d);
  * \return the gost id for EVP_CTX creation.
  */
 int ldns_key_EVP_load_gost_id(void);
+int ldns_key_EVP_load_gost12_id(void);
 
 /** Release the engine reference held for the GOST engine. */
 void ldns_key_EVP_unload_gost(void);

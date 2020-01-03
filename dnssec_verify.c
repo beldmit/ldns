@@ -1808,15 +1808,23 @@ ldns_dnssec_verify_denial_nsec3(ldns_rr *rr,
 }
 
 #ifdef USE_GOST
-EVP_PKEY*
-ldns_gost2pkey_raw(const unsigned char* key, size_t keylen)
-{
-	/* prefix header for X509 encoding */
-	uint8_t asn[37] = { 0x30, 0x63, 0x30, 0x1c, 0x06, 0x06, 0x2a, 0x85, 
+static uint8_t asn_gost12[42] = {
+   0x30, 0x68, 0x30, 0x21, 0x06, 0x08, 0x2a, 0x85, 0x03, 0x07, 0x01, 0x01, 0x02,
+   0x01, 0x30, 0x15, 0x06, 0x09, 0x2a, 0x85, 0x03, 0x07, 0x01, 0x02, 0x01, 0x01,
+   0x01, 0x06, 0x08, 0x2a, 0x85, 0x03, 0x07, 0x01, 0x01, 0x02, 0x02, 0x03, 0x43,
+   0x00, 0x04, 0x40};
+
+static uint8_t asn_gost01[37] = { 0x30, 0x63, 0x30, 0x1c, 0x06, 0x06, 0x2a, 0x85, 
 		0x03, 0x02, 0x02, 0x13, 0x30, 0x12, 0x06, 0x07, 0x2a, 0x85, 
 		0x03, 0x02, 0x02, 0x23, 0x01, 0x06, 0x07, 0x2a, 0x85, 0x03, 
 		0x02, 0x02, 0x1e, 0x01, 0x03, 0x43, 0x00, 0x04, 0x40};
-	unsigned char encoded[37+64];
+
+static EVP_PKEY*
+ldns_gost2pkey_generic(const unsigned char* key, size_t keylen,
+  const uint8_t *asn, size_t asn1size)
+{
+	/* prefix header for X509 encoding */
+	unsigned char encoded[42+64];
 	const unsigned char* pp;
 	if(keylen != 64) {
 		/* key wrong size */
@@ -1824,16 +1832,29 @@ ldns_gost2pkey_raw(const unsigned char* key, size_t keylen)
 	}
 
 	/* create evp_key */
-	memmove(encoded, asn, 37);
-	memmove(encoded+37, key, 64);
+	memmove(encoded, asn, asn1size);
+	memmove(encoded+asn1size, key, 64);
 	pp = (unsigned char*)&encoded[0];
 
 	return d2i_PUBKEY(NULL, &pp, (int)sizeof(encoded));
 }
 
+EVP_PKEY*
+ldns_gost2pkey_raw(const unsigned char* key, size_t keylen)
+{
+	return ldns_gost2pkey_generic(key, keylen, asn_gost01, 37);
+}
+
+EVP_PKEY*
+ldns_gost122pkey_raw(const unsigned char* key, size_t keylen)
+{
+	return ldns_gost2pkey_generic(key, keylen, asn_gost12, 42);
+}
+
 static ldns_status
-ldns_verify_rrsig_gost_raw(const unsigned char* sig, size_t siglen, 
-	const ldns_buffer* rrset, const unsigned char* key, size_t keylen)
+ldns_verify_rrsig_gost_generic(const unsigned char* sig, size_t siglen, 
+	const ldns_buffer* rrset, const unsigned char* key, size_t keylen,
+	const char *mdname)
 {
 	EVP_PKEY *evp_key;
 	ldns_status result;
@@ -1847,10 +1868,24 @@ ldns_verify_rrsig_gost_raw(const unsigned char* sig, size_t siglen,
 
 	/* verify signature */
 	result = ldns_verify_rrsig_evp_raw(sig, siglen, rrset, 
-		evp_key, EVP_get_digestbyname("md_gost94"));
+		evp_key, EVP_get_digestbyname(mdname));
 	EVP_PKEY_free(evp_key);
 
 	return result;
+}
+
+static ldns_status
+ldns_verify_rrsig_gost_raw(const unsigned char* sig, size_t siglen, 
+	const ldns_buffer* rrset, const unsigned char* key, size_t keylen)
+{
+	return ldns_verify_rrsig_gost_generic(sig, siglen, rrset, key, keylen, "md_gost94");
+}
+
+static ldns_status
+ldns_verify_rrsig_gost12_raw(const unsigned char* sig, size_t siglen, 
+	const ldns_buffer* rrset, const unsigned char* key, size_t keylen)
+{
+	return ldns_verify_rrsig_gost_generic(sig, siglen, rrset, key, keylen, "md_gost2012_256");
 }
 #endif
 
@@ -2050,6 +2085,10 @@ ldns_verify_rrsig_buffers_raw(unsigned char* sig, size_t siglen,
 		return ldns_verify_rrsig_gost_raw(sig, siglen, verify_buf,
 			key, keylen);
 		break;
+	case LDNS_ECC_GOST12:
+		return ldns_verify_rrsig_gost12_raw(sig, siglen, verify_buf,
+			key, keylen);
+		break;
 #endif
 #ifdef USE_ECDSA
         case LDNS_ECDSAP256SHA256:
@@ -2169,6 +2208,7 @@ ldns_rrsig2rawsig_buffer(ldns_buffer* rawsig_buf, const ldns_rr* rrsig)
 #endif
 #ifdef USE_GOST
 	case LDNS_ECC_GOST:
+	case LDNS_ECC_GOST12:
 #endif
 #ifdef USE_ED25519
 	case LDNS_ED25519:

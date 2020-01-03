@@ -169,6 +169,12 @@ ldns_sign_public_buffer(ldns_buffer *sign_buf, ldns_key *current_key)
 				   ldns_key_evp_key(current_key),
 				   EVP_get_digestbyname("md_gost94"));
 		break;
+	case LDNS_SIGN_ECC_GOST12:
+		b64rdf = ldns_sign_public_evp(
+				   sign_buf,
+				   ldns_key_evp_key(current_key),
+				   EVP_get_digestbyname("md_gost2012_256"));
+		break;
 #endif /* USE_GOST */
 #ifdef USE_ECDSA
         case LDNS_SIGN_ECDSAP256SHA256:
