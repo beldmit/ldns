@@ -49,7 +49,7 @@ ldns_lookup_table ldns_signing_algorithms[] = {
 	{ LDNS_SIGN_ED448, "ED448" },
 #endif
 #ifdef USE_GOST
-        { LDNS_SIGN_ECC_GOST12, "ECC-GOST" },
+        { LDNS_SIGN_ECC_GOST12, "ECC-GOST12" },
 #endif
 #ifdef USE_DSA
         { LDNS_SIGN_DSA, "DSA" },
