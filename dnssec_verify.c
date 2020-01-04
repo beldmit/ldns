@@ -1808,12 +1808,13 @@ ldns_dnssec_verify_denial_nsec3(ldns_rr *rr,
 }
 
 #ifdef USE_GOST
-static uint8_t asn_gost12[42] = {
-   0x30, 0x68, 0x30, 0x21, 0x06, 0x08, 0x2a, 0x85, 0x03, 0x07, 0x01, 0x01, 0x02,
-   0x01, 0x30, 0x15, 0x06, 0x09, 0x2a, 0x85, 0x03, 0x07, 0x01, 0x02, 0x01, 0x01,
-   0x01, 0x06, 0x08, 0x2a, 0x85, 0x03, 0x07, 0x01, 0x01, 0x02, 0x02, 0x03, 0x43,
-   0x00, 0x04, 0x40};
-
+static uint8_t asn_gost12[32] = {
+0x30, 0x5e, 0x30, 0x17, 0x06, 0x08, 0x2a, 0x85,
+0x03, 0x07, 0x01, 0x01, 0x01, 0x01, 0x30, 0x0b,
+0x06, 0x09, 0x2a, 0x85, 0x03, 0x07, 0x01, 0x02,
+0x01, 0x01, 0x01, 0x03, 0x43, 0x00, 0x04, 0x40,
+};
+#endif
 static uint8_t asn_gost01[37] = { 0x30, 0x63, 0x30, 0x1c, 0x06, 0x06, 0x2a, 0x85, 
 		0x03, 0x02, 0x02, 0x13, 0x30, 0x12, 0x06, 0x07, 0x2a, 0x85, 
 		0x03, 0x02, 0x02, 0x23, 0x01, 0x06, 0x07, 0x2a, 0x85, 0x03, 
@@ -1824,7 +1825,7 @@ ldns_gost2pkey_generic(const unsigned char* key, size_t keylen,
   const uint8_t *asn, size_t asn1size)
 {
 	/* prefix header for X509 encoding */
-	unsigned char encoded[42+64];
+	unsigned char encoded[37+64];
 	const unsigned char* pp;
 	if(keylen != 64) {
 		/* key wrong size */
@@ -1836,7 +1837,7 @@ ldns_gost2pkey_generic(const unsigned char* key, size_t keylen,
 	memmove(encoded+asn1size, key, 64);
 	pp = (unsigned char*)&encoded[0];
 
-	return d2i_PUBKEY(NULL, &pp, (int)sizeof(encoded));
+	return d2i_PUBKEY(NULL, &pp, (int)asn1size+64);
 }
 
 EVP_PKEY*
@@ -1848,7 +1849,7 @@ ldns_gost2pkey_raw(const unsigned char* key, size_t keylen)
 EVP_PKEY*
 ldns_gost122pkey_raw(const unsigned char* key, size_t keylen)
 {
-	return ldns_gost2pkey_generic(key, keylen, asn_gost12, 42);
+	return ldns_gost2pkey_generic(key, keylen, asn_gost12, 32);
 }
 
 static ldns_status
@@ -1856,12 +1857,18 @@ ldns_verify_rrsig_gost_generic(const unsigned char* sig, size_t siglen,
 	const ldns_buffer* rrset, const unsigned char* key, size_t keylen,
 	const char *mdname)
 {
-	EVP_PKEY *evp_key;
+	EVP_PKEY *evp_key = NULL;
 	ldns_status result;
-
-	(void) ldns_key_EVP_load_gost_id();
-	evp_key = ldns_gost2pkey_raw(key, keylen);
+	
+	if (strcmp(mdname, "md_gost94") == 0) {
+		(void) ldns_key_EVP_load_gost_id();
+		evp_key = ldns_gost2pkey_raw(key, keylen);
+	} else if (strcmp(mdname, "md_gost12_256") == 0) {
+		(void) ldns_key_EVP_load_gost12_id();
+		evp_key = ldns_gost122pkey_raw(key, keylen);
+	}
 	if(!evp_key) {
+		ERR_print_errors_fp(stderr);
 		/* could not convert key */
 		return LDNS_STATUS_CRYPTO_BOGUS;
 	}
