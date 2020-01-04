@@ -215,7 +215,7 @@ void ldns_key_EVP_unload_gost(void)
 
 /** read GOST private key */
 static EVP_PKEY*
-ldns_key_new_frm_fp_gost_l_generic(FILE* fp, int* line_nr, int gost_id, const char *keyword)
+ldns_key_new_frm_fp_gost_l_generic(FILE* fp, int* line_nr, int gost_id, const char *keyword, size_t min_token_len)
 {
 	char token[16384];
 	const unsigned char* pp;
@@ -225,7 +225,7 @@ ldns_key_new_frm_fp_gost_l_generic(FILE* fp, int* line_nr, int gost_id, const ch
 	if (ldns_fget_keyword_data_l(fp, keyword, ": ", token, "\n", 
 		sizeof(token), line_nr) == -1)
 		return NULL;
-	while(strlen(token) < 96) {
+	while(strlen(token) < min_token_len) {
 		/* read more b64 from the file, b64 split on multiple lines */
 		if(ldns_fget_token_l(fp, token+strlen(token), "\n",
 			sizeof(token)-strlen(token), line_nr) == -1)
@@ -247,7 +247,7 @@ ldns_key_new_frm_fp_gost_l(FILE* fp, int* line_nr)
 	if(!gost_id)
 		return NULL;
 
-	return ldns_key_new_frm_fp_gost_l_generic(fp, line_nr, gost_id, "GostAsn1");
+	return ldns_key_new_frm_fp_gost_l_generic(fp, line_nr, gost_id, "GostAsn1", 96);
 }
 
 static EVP_PKEY*
@@ -258,7 +258,7 @@ ldns_key_new_frm_fp_gost12_l(FILE* fp, int* line_nr)
 	if(!gost_id)
 		return NULL;
 
-	return ldns_key_new_frm_fp_gost_l_generic(fp, line_nr, gost_id, "Gost12Asn1");
+	return ldns_key_new_frm_fp_gost_l_generic(fp, line_nr, gost_id, "Gost12Asn1", 88);
 }
 #endif
 
@@ -1857,7 +1857,8 @@ ldns_key_gost2bin(unsigned char* data, EVP_PKEY* k, uint16_t* size)
 static bool
 ldns_key_gost122bin(unsigned char* data, EVP_PKEY* k, uint16_t* size)
 {
-	return ldns_key_gost2bin_generic(data, k, size, 42);
+	return ldns_key_gost2bin_generic(data, k, size, 42) ||
+	ldns_key_gost2bin_generic(data, k, size, 32);
 }
 #endif /* USE_GOST */
 
