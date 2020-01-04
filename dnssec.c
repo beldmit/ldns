@@ -580,7 +580,7 @@ ldns_key_rr2ds(const ldns_rr *key, ldns_hash h)
 	case LDNS_HASH_GOST12:
 #ifdef USE_GOST
 		(void)ldns_key_EVP_load_gost12_id();
-		md = EVP_get_digestbyname("md_gost2012_256");
+		md = EVP_get_digestbyname("md_gost12_256");
 		if(!md) {
 			ldns_rr_free(ds);
 			return NULL;

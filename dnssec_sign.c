@@ -173,7 +173,7 @@ ldns_sign_public_buffer(ldns_buffer *sign_buf, ldns_key *current_key)
 		b64rdf = ldns_sign_public_evp(
 				   sign_buf,
 				   ldns_key_evp_key(current_key),
-				   EVP_get_digestbyname("md_gost2012_256"));
+				   EVP_get_digestbyname("md_gost12_256"));
 		break;
 #endif /* USE_GOST */
 #ifdef USE_ECDSA

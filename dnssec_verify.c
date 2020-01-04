@@ -1885,7 +1885,7 @@ static ldns_status
 ldns_verify_rrsig_gost12_raw(const unsigned char* sig, size_t siglen, 
 	const ldns_buffer* rrset, const unsigned char* key, size_t keylen)
 {
-	return ldns_verify_rrsig_gost_generic(sig, siglen, rrset, key, keylen, "md_gost2012_256");
+	return ldns_verify_rrsig_gost_generic(sig, siglen, rrset, key, keylen, "md_gost12_256");
 }
 #endif
 
