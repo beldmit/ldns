@@ -76,6 +76,16 @@ main(int argc, char *argv[])
 	random = NULL;
 	ksk = false; /* don't create a ksk per default */
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000 || defined(HAVE_LIBRESSL) || !defined(HAVE_OPENSSL_INIT_CRYPTO)
+        OpenSSL_add_all_algorithms();
+#else
+	if ( !OPENSSL_init_crypto ( OPENSSL_INIT_LOAD_CONFIG, NULL ) ) {
+		fprintf ( stderr, "OPENSSL_init_crypto(3) failed.\n" );
+		ERR_print_errors_fp ( stderr );
+		exit ( EXIT_FAILURE );
+	}
+#endif
+
 	while ((c = getopt(argc, argv, "a:kb:r:v")) != -1) {
 		switch (c) {
 		case 'a':
