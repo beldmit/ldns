@@ -1857,8 +1857,7 @@ ldns_key_gost2bin(unsigned char* data, EVP_PKEY* k, uint16_t* size)
 static bool
 ldns_key_gost122bin(unsigned char* data, EVP_PKEY* k, uint16_t* size)
 {
-	return ldns_key_gost2bin_generic(data, k, size, 42) ||
-	ldns_key_gost2bin_generic(data, k, size, 32);
+	return ldns_key_gost2bin_generic(data, k, size, 32);
 }
 #endif /* USE_GOST */
 
